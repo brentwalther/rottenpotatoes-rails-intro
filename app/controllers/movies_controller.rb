@@ -4,13 +4,28 @@ class MoviesController < ApplicationController
     params.require(:movie).permit(:title, :rating, :description, :release_date)
   end
 
-  def sort_params
-    params.permit(:sort_by)
+  def has_sort_params_set
+    return true if params[:sort_by].present?
+    if session[:sort_by].present?
+      params[:sort_by] = session[:sort_by]
+      return false
+    end
+    true 
   end
 
-  def ratings_params
-    return params[:ratings].keys if params[:ratings].present?
-    Movie.all_ratings
+  def has_ratings_params_set
+    return true if params[:ratings].present?
+    if session[:ratings_params].present?
+      params[:ratings] = session[:ratings_params]
+      return false
+    end
+    params[:ratings] = Hash[Movie.all_ratings.map { |r| [r, 1] }] 
+    true
+  end
+
+  def save_filters
+    session[:sort_by] = params[:sort_by]
+    session[:ratings_params] = params[:ratings]
   end
 
   def show
@@ -20,12 +35,18 @@ class MoviesController < ApplicationController
   end
 
   def index
-    @movies = Movie.where( rating: ratings_params )
-    @sort_by = sort_params[:sort_by].try(:to_sym)
+    if !has_sort_params_set || !has_ratings_params_set
+      flash.keep
+      redirect_to movies_path(params.slice(:sort_by, :ratings))
+      return
+    end
+    @movies = Movie.where( rating: params[:ratings].keys )
+    @sort_by = params[:sort_by].try(:to_sym)
     sort_movies(@movies, @sort_by) if @sort_by.present?
 
     @all_ratings = Movie.all_ratings
-    @checked_ratings = ratings_params
+    @checked_ratings = params[:ratings].keys
+    save_filters
   end
 
   def new
